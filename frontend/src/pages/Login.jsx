@@ -1,7 +1,28 @@
-import React from 'react'
+import React, { useState } from 'react'
 import loginBackground from '../assets/login.png'
 
-function Login({ form, error, showPassword, onChange, onSubmit, onTogglePassword }) {
+function Login({
+  form,
+  error,
+  showPassword,
+  onChange,
+  onSubmit,
+  onTogglePassword,
+  forgotUsername,
+  forgotError,
+  forgotSuccess,
+  isSendingReset,
+  onForgotUsernameChange,
+  onForgotSubmit,
+  onForgotClose,
+}) {
+  const [isForgotOpen, setIsForgotOpen] = useState(false)
+
+  const closeForgotModal = () => {
+    setIsForgotOpen(false)
+    onForgotClose?.()
+  }
+
   return (
     <>
       <style jsx global>{`
@@ -200,6 +221,103 @@ function Login({ form, error, showPassword, onChange, onSubmit, onTogglePassword
           align-self: center;
         }
 
+        .forgot-password-btn {
+          align-self: flex-end;
+          background: none;
+          border: none;
+          color: #0b7aa6;
+          font-size: 0.9rem;
+          font-weight: 600;
+          cursor: pointer;
+          padding: 0;
+          margin-top: -0.5rem;
+        }
+
+        .forgot-password-btn:hover {
+          text-decoration: underline;
+        }
+
+        .forgot-modal {
+          position: fixed;
+          inset: 0;
+          z-index: 1000;
+          display: grid;
+          place-items: center;
+        }
+
+        .forgot-backdrop {
+          position: absolute;
+          inset: 0;
+          background: rgba(0, 0, 0, 0.45);
+        }
+
+        .forgot-card {
+          position: relative;
+          background: #fff;
+          border-radius: 16px;
+          padding: 24px 22px;
+          width: min(420px, calc(100vw - 32px));
+          box-shadow: 0 18px 40px rgba(10, 32, 44, 0.2);
+          z-index: 1;
+        }
+
+        .forgot-card h3 {
+          margin: 0 0 10px;
+          font-size: 1.2rem;
+          color: #12354b;
+        }
+
+        .forgot-card p {
+          margin: 0 0 16px;
+          color: #2d4a5d;
+          font-size: 0.95rem;
+          line-height: 1.4;
+        }
+
+        .forgot-card input[type="text"] {
+          width: 100%;
+          padding: 0.7rem 0.8rem;
+          border: 1px solid #c6d2dc;
+          border-radius: 10px;
+          font-size: 0.95rem;
+          margin: 0 0 12px;
+          box-sizing: border-box;
+          outline: none;
+        }
+
+        .forgot-card input[type="text"]:focus {
+          border-color: #0b7aa6;
+        }
+
+        .forgot-card .forgot-error {
+          color: #dc3545;
+          font-size: 0.88rem;
+          margin: 0 0 10px;
+        }
+
+        .forgot-card .forgot-success {
+          color: #0b7a32;
+          font-size: 0.88rem;
+          margin: 0 0 10px;
+        }
+
+        .forgot-actions {
+          display: flex;
+          justify-content: flex-end;
+          gap: 10px;
+        }
+
+        .forgot-card button {
+          border: none;
+          border-radius: 10px;
+          padding: 0.6rem 1.1rem;
+          font-size: 0.92rem;
+          font-weight: 600;
+          background: #0b7aa6;
+          color: #fff;
+          cursor: pointer;
+        }
+
         .submit:hover {
           background-color: #09688e;
         }
@@ -310,12 +428,41 @@ function Login({ form, error, showPassword, onChange, onSubmit, onTogglePassword
                   </div>
                 </label>
                 {error ? <p className="error">{error}</p> : null}
+                <button type="button" className="forgot-password-btn" onClick={() => setIsForgotOpen(true)}>
+                  Forgot password?
+                </button>
                 <button type="submit" className="submit">Log In</button>
               </form>
             </div>
           </div>
         </section>
       </div>
+      {isForgotOpen ? (
+        <div className="forgot-modal" role="dialog" aria-modal="true" aria-labelledby="forgot-password-title">
+          <div className="forgot-backdrop" onClick={closeForgotModal} />
+          <div className="forgot-card">
+            <h3 id="forgot-password-title">Password Assistance</h3>
+            <p>Enter your username. We will send a password reset email to your account.</p>
+            <form onSubmit={onForgotSubmit}>
+              <input
+                type="text"
+                placeholder="Username"
+                value={forgotUsername}
+                onChange={onForgotUsernameChange}
+                autoComplete="username"
+              />
+              {forgotError ? <p className="forgot-error">{forgotError}</p> : null}
+              {forgotSuccess ? <p className="forgot-success">{forgotSuccess}</p> : null}
+              <div className="forgot-actions">
+                <button type="button" onClick={closeForgotModal}>Close</button>
+                <button type="submit" disabled={isSendingReset}>
+                  {isSendingReset ? 'Sending...' : 'Send reset email'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      ) : null}
     </>
   )
 }

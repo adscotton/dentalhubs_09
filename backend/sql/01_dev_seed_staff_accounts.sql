@@ -1,4 +1,4 @@
--- DEV ONLY: creates three test auth users.
+-- DEV ONLY: creates or normalizes three test auth users.
 -- Do not use these credentials in production.
 --
 -- Generated users:
@@ -8,7 +8,7 @@
 --
 -- Important:
 -- - Run 00_schema_and_policies.sql first.
--- - If users already exist, this script skips them.
+-- - Running this script reapplies known dev credentials and active profiles.
 
 create extension if not exists pgcrypto;
 
@@ -19,6 +19,8 @@ declare
   v_receptionist_id uuid;
   v_associate_id uuid;
 begin
+  perform set_config('search_path', 'public, auth, extensions', true);
+
   select id into v_admin_id
   from auth.users
   where email = 'admin@dent22.local';
@@ -85,6 +87,75 @@ begin
       now()
     );
   end if;
+
+  update auth.users
+  set
+    email = 'admin@dent22.local',
+    encrypted_password = crypt('Admin123!', gen_salt('bf')),
+    email_confirmed_at = coalesce(email_confirmed_at, now()),
+    raw_app_meta_data = '{"provider":"email","providers":["email"]}',
+    raw_user_meta_data = '{"role":"admin","full_name":"Admin User","username":"admin"}',
+    updated_at = now()
+  where id = v_admin_id;
+
+  if not exists (
+    select 1
+    from auth.identities ai
+    where ai.user_id = v_admin_id
+      and ai.provider = 'email'
+  ) then
+    insert into auth.identities (
+      id,
+      user_id,
+      provider_id,
+      identity_data,
+      provider,
+      last_sign_in_at,
+      created_at,
+      updated_at
+    )
+    values (
+      gen_random_uuid(),
+      v_admin_id,
+      'admin@dent22.local',
+      jsonb_build_object(
+        'sub', v_admin_id::text,
+        'email', 'admin@dent22.local'
+      ),
+      'email',
+      now(),
+      now(),
+      now()
+    );
+  else
+    update auth.identities
+    set
+      provider_id = 'admin@dent22.local',
+      identity_data = jsonb_build_object(
+        'sub', v_admin_id::text,
+        'email', 'admin@dent22.local'
+      ),
+      updated_at = now()
+    where user_id = v_admin_id
+      and provider = 'email';
+  end if;
+
+  insert into public.staff_profiles (user_id, email, username, full_name, role, is_active)
+  values (
+    v_admin_id,
+    'admin@dent22.local',
+    'admin',
+    'Admin User',
+    'admin',
+    true
+  )
+  on conflict (user_id) do update
+    set email = excluded.email,
+        username = excluded.username,
+        full_name = excluded.full_name,
+        role = excluded.role,
+        is_active = true,
+        updated_at = now();
 
   select id into v_receptionist_id
   from auth.users
@@ -153,6 +224,75 @@ begin
     );
   end if;
 
+  update auth.users
+  set
+    email = 'receptionist@dent22.local',
+    encrypted_password = crypt('Reception123!', gen_salt('bf')),
+    email_confirmed_at = coalesce(email_confirmed_at, now()),
+    raw_app_meta_data = '{"provider":"email","providers":["email"]}',
+    raw_user_meta_data = '{"role":"receptionist","full_name":"Receptionist User","username":"receptionist"}',
+    updated_at = now()
+  where id = v_receptionist_id;
+
+  if not exists (
+    select 1
+    from auth.identities ai
+    where ai.user_id = v_receptionist_id
+      and ai.provider = 'email'
+  ) then
+    insert into auth.identities (
+      id,
+      user_id,
+      provider_id,
+      identity_data,
+      provider,
+      last_sign_in_at,
+      created_at,
+      updated_at
+    )
+    values (
+      gen_random_uuid(),
+      v_receptionist_id,
+      'receptionist@dent22.local',
+      jsonb_build_object(
+        'sub', v_receptionist_id::text,
+        'email', 'receptionist@dent22.local'
+      ),
+      'email',
+      now(),
+      now(),
+      now()
+    );
+  else
+    update auth.identities
+    set
+      provider_id = 'receptionist@dent22.local',
+      identity_data = jsonb_build_object(
+        'sub', v_receptionist_id::text,
+        'email', 'receptionist@dent22.local'
+      ),
+      updated_at = now()
+    where user_id = v_receptionist_id
+      and provider = 'email';
+  end if;
+
+  insert into public.staff_profiles (user_id, email, username, full_name, role, is_active)
+  values (
+    v_receptionist_id,
+    'receptionist@dent22.local',
+    'receptionist',
+    'Receptionist User',
+    'receptionist',
+    true
+  )
+  on conflict (user_id) do update
+    set email = excluded.email,
+        username = excluded.username,
+        full_name = excluded.full_name,
+        role = excluded.role,
+        is_active = true,
+        updated_at = now();
+
   select id into v_associate_id
   from auth.users
   where email = 'associate@dent22.local';
@@ -219,5 +359,74 @@ begin
       now()
     );
   end if;
+
+  update auth.users
+  set
+    email = 'associate@dent22.local',
+    encrypted_password = crypt('Dentist123!', gen_salt('bf')),
+    email_confirmed_at = coalesce(email_confirmed_at, now()),
+    raw_app_meta_data = '{"provider":"email","providers":["email"]}',
+    raw_user_meta_data = '{"role":"associate_dentist","full_name":"Associate Dentist User","username":"associate"}',
+    updated_at = now()
+  where id = v_associate_id;
+
+  if not exists (
+    select 1
+    from auth.identities ai
+    where ai.user_id = v_associate_id
+      and ai.provider = 'email'
+  ) then
+    insert into auth.identities (
+      id,
+      user_id,
+      provider_id,
+      identity_data,
+      provider,
+      last_sign_in_at,
+      created_at,
+      updated_at
+    )
+    values (
+      gen_random_uuid(),
+      v_associate_id,
+      'associate@dent22.local',
+      jsonb_build_object(
+        'sub', v_associate_id::text,
+        'email', 'associate@dent22.local'
+      ),
+      'email',
+      now(),
+      now(),
+      now()
+    );
+  else
+    update auth.identities
+    set
+      provider_id = 'associate@dent22.local',
+      identity_data = jsonb_build_object(
+        'sub', v_associate_id::text,
+        'email', 'associate@dent22.local'
+      ),
+      updated_at = now()
+    where user_id = v_associate_id
+      and provider = 'email';
+  end if;
+
+  insert into public.staff_profiles (user_id, email, username, full_name, role, is_active)
+  values (
+    v_associate_id,
+    'associate@dent22.local',
+    'associate',
+    'Associate Dentist User',
+    'associate_dentist',
+    true
+  )
+  on conflict (user_id) do update
+    set email = excluded.email,
+        username = excluded.username,
+        full_name = excluded.full_name,
+        role = excluded.role,
+        is_active = true,
+        updated_at = now();
 end
 $$;

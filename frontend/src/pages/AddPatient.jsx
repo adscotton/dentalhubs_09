@@ -175,6 +175,17 @@ const parseBirthdateDisplay = (displayDate) => {
   return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`
 }
 
+const formatPatientCode = (patientCode, patientId) => {
+  const raw = `${patientCode || ''}`.trim()
+  if (/^PT-\d{6}$/.test(raw)) return raw
+
+  const digits = raw.replace(/\D/g, '')
+  if (digits) return `PT-${digits.slice(-6).padStart(6, '0')}`
+
+  const fallbackDigits = `${patientId || ''}`.replace(/\D/g, '').slice(-6)
+  return `PT-${fallbackDigits.padStart(6, '0')}`
+}
+
 const normalizeBirthdateTyping = (value) => {
   const digits = `${value || ''}`.replace(/\D/g, '').slice(0, 8)
   if (digits.length <= 2) return digits
@@ -255,6 +266,7 @@ function AddPatient() {
   const [isSubmitConfirmOpen, setIsSubmitConfirmOpen] = useState(false)
   const [isSubmitSuccessOpen, setIsSubmitSuccessOpen] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [validationMessage, setValidationMessage] = useState('')
   const [allergenInfo, setAllergenInfo] = useState(INITIAL_ALLERGEN_INFO)
   const [patientInfo, setPatientInfo] = useState(INITIAL_PATIENT_INFO)
   const [medicalDetails, setMedicalDetails] = useState(INITIAL_MEDICAL_DETAILS)
@@ -262,6 +274,7 @@ function AddPatient() {
   const [checkedConditions, setCheckedConditions] = useState(INITIAL_CHECKBOX_CONDITIONS)
   const [isDraftHydrated, setIsDraftHydrated] = useState(false)
   const [birthdateInput, setBirthdateInput] = useState('')
+  const [invalidPatientFields, setInvalidPatientFields] = useState({})
   const maxBirthdateIso = getMaxBirthdateIso()
   const birthdatePickerRef = useRef(null)
 
@@ -350,6 +363,32 @@ function AddPatient() {
     setBirthdateInput(formatBirthdateDisplay(patientInfo.birthdate))
   }, [patientInfo.birthdate])
 
+  useEffect(() => {
+    if (isMinor) return
+    setInvalidPatientFields((previous) => {
+      if (!previous.guardianName && !previous.guardianMobileNumber && !previous.guardianOccupation) return previous
+      const next = { ...previous }
+      delete next.guardianName
+      delete next.guardianMobileNumber
+      delete next.guardianOccupation
+      return next
+    })
+  }, [isMinor])
+
+  const clearPatientFieldError = (field) => {
+    setInvalidPatientFields((previous) => {
+      if (!previous[field]) return previous
+      const next = { ...previous }
+      delete next[field]
+      return next
+    })
+  }
+
+  const setPatientField = (field, value) => {
+    setPatientInfo((previous) => ({ ...previous, [field]: value }))
+    clearPatientFieldError(field)
+  }
+
   const validatePatientInformationStep = () => {
     const requiredFields = [
       'lastName',
@@ -364,20 +403,37 @@ function AddPatient() {
     ]
     const minorRequiredFields = ['guardianName', 'guardianMobileNumber', 'guardianOccupation']
     const fieldsToValidate = isMinor ? [...requiredFields, ...minorRequiredFields] : requiredFields
-    const hasMissingRequiredField = fieldsToValidate.some((field) => `${patientInfo[field]}`.trim() === '')
+    const nextInvalidFields = {}
+    fieldsToValidate.forEach((field) => {
+      if (`${patientInfo[field]}`.trim() === '') nextInvalidFields[field] = true
+    })
+    const hasMissingRequiredField = fieldsToValidate.some((field) => nextInvalidFields[field])
+    const hasInvalidMobile = !/^\d{11}$/.test(`${patientInfo.mobileNumber || ''}`)
+    const hasInvalidGuardianMobile = isMinor && !/^\d{11}$/.test(`${patientInfo.guardianMobileNumber || ''}`)
+    const hasInvalidBirthdateAge = Boolean(patientInfo.birthdate && patientInfo.birthdate > maxBirthdateIso)
+
+    if (hasInvalidMobile) nextInvalidFields.mobileNumber = true
+    if (hasInvalidGuardianMobile) nextInvalidFields.guardianMobileNumber = true
+    if (hasInvalidBirthdateAge) nextInvalidFields.birthdate = true
+    setInvalidPatientFields(nextInvalidFields)
 
     if (hasMissingRequiredField) {
-      window.alert('Please complete all required fields marked with * before proceeding.')
+      setValidationMessage('Please complete all required fields marked with * before proceeding.')
       return false
     }
 
-    if (!/^\d{11}$/.test(`${patientInfo.mobileNumber || ''}`)) {
-      window.alert('Mobile number must be exactly 11 numeric digits.')
+    if (hasInvalidMobile) {
+      setValidationMessage('Mobile number must be exactly 11 numeric digits.')
       return false
     }
 
-    if (patientInfo.birthdate > maxBirthdateIso) {
-      window.alert('Patient must be at least 2 years old.')
+    if (hasInvalidGuardianMobile) {
+      setValidationMessage('Guardian mobile number must be exactly 11 numeric digits.')
+      return false
+    }
+
+    if (hasInvalidBirthdateAge) {
+      setValidationMessage('Patient must be at least 2 years old.')
       return false
     }
 
@@ -387,20 +443,66 @@ function AddPatient() {
   const validateYesNoQuestions = (questions, answers, notes, label) => {
     const hasMissingAnswer = questions.some((_, index) => !answers[index])
     if (hasMissingAnswer) {
-      window.alert(`Please answer all questions under ${label} before proceeding.`)
+      setValidationMessage(`Please answer all questions under ${label} before proceeding.`)
       return false
     }
 
     const hasMissingNote = questions.some((item, index) => item.note && answers[index] === 'YES' && `${notes[index] || ''}`.trim() === '')
     if (hasMissingNote) {
-      window.alert(`Please complete all required follow-up details under ${label}.`)
+      setValidationMessage(`Please complete all required follow-up details under ${label}.`)
       return false
     }
     return true
   }
 
-  const nextStep = () => {
-    if (activeStep === 0 && !validatePatientInformationStep()) return
+  const findExistingPatientRecord = async () => {
+    const normalizedLastName = `${patientInfo.lastName || ''}`.trim().replace(/\s+/g, ' ')
+    const normalizedFirstName = `${patientInfo.firstName || ''}`.trim().replace(/\s+/g, ' ')
+    const normalizedSex = `${patientInfo.sex || ''}`.trim()
+    const normalizedBirthdate = `${patientInfo.birthdate || ''}`.trim()
+
+    if (!normalizedLastName || !normalizedFirstName || !normalizedBirthdate || !normalizedSex) return null
+
+    const { data, error: duplicateCheckError } = await supabase
+      .from('patients')
+      .select('id, patient_code, first_name, last_name, birth_date, sex, archived_at')
+      .ilike('last_name', normalizedLastName)
+      .ilike('first_name', normalizedFirstName)
+      .eq('birth_date', normalizedBirthdate)
+      .eq('sex', normalizedSex)
+      .is('archived_at', null)
+      .limit(1)
+
+    if (duplicateCheckError) throw duplicateCheckError
+    return data?.[0] ?? null
+  }
+
+  const nextStep = async () => {
+    if (activeStep === 0) {
+      if (!validatePatientInformationStep()) return
+
+      try {
+        const duplicatePatient = await findExistingPatientRecord()
+        if (duplicatePatient) {
+          setInvalidPatientFields((previous) => ({
+            ...previous,
+            lastName: true,
+            firstName: true,
+            birthdate: true,
+            sex: true,
+            age: true,
+          }))
+          setValidationMessage(
+            `Existing record found (${formatPatientCode(duplicatePatient.patient_code, duplicatePatient.id)} - ${duplicatePatient.last_name}, ${duplicatePatient.first_name}).`,
+          )
+          return
+        }
+      } catch (duplicateCheckError) {
+        setValidationMessage(duplicateCheckError?.message || 'Unable to validate existing records.')
+        return
+      }
+    }
+
     if (activeStep === 1 && !validateYesNoQuestions(MEDICAL_QUESTIONS, medicalAnswers, medicalNotes, 'Medical History')) return
     if (activeStep === 2 && !validateYesNoQuestions(DENTAL_QUESTIONS, dentalAnswers, dentalNotes, 'Dental History')) return
 
@@ -439,24 +541,26 @@ function AddPatient() {
   const commitBirthdateFromInput = () => {
     const typedValue = `${birthdateInput || ''}`.trim()
     if (!typedValue) {
-      setPatientInfo((previous) => ({ ...previous, birthdate: '' }))
+      setPatientField('birthdate', '')
       return
     }
 
     const parsedIso = parseBirthdateDisplay(typedValue)
     if (!parsedIso) {
-      window.alert('Birthdate must follow dd/mm/yyyy format.')
-      setPatientInfo((previous) => ({ ...previous, birthdate: '' }))
+      setValidationMessage('Birthdate must follow dd/mm/yyyy format.')
+      setPatientField('birthdate', '')
+      setInvalidPatientFields((previous) => ({ ...previous, birthdate: true }))
       return
     }
 
     if (parsedIso > maxBirthdateIso) {
-      window.alert('Patient must be at least 2 years old.')
-      setPatientInfo((previous) => ({ ...previous, birthdate: '' }))
+      setValidationMessage('Patient must be at least 2 years old.')
+      setPatientField('birthdate', '')
+      setInvalidPatientFields((previous) => ({ ...previous, birthdate: true }))
       return
     }
 
-    setPatientInfo((previous) => ({ ...previous, birthdate: parsedIso }))
+    setPatientField('birthdate', parsedIso)
   }
 
   const normalizeSex = (value) => {
@@ -579,6 +683,23 @@ function AddPatient() {
     }
 
     try {
+      const duplicatePatient = await findExistingPatientRecord()
+      if (duplicatePatient) {
+        setInvalidPatientFields((previous) => ({
+          ...previous,
+          lastName: true,
+          firstName: true,
+          birthdate: true,
+          sex: true,
+          age: true,
+        }))
+        setIsSubmitConfirmOpen(false)
+        setValidationMessage(
+          `Existing record found (${formatPatientCode(duplicatePatient.patient_code, duplicatePatient.id)} - ${duplicatePatient.last_name}, ${duplicatePatient.first_name}).`,
+        )
+        return
+      }
+
       const insertedPatient = await insertPatientWithRetry()
 
       const { error: logError } = await supabase.from('patient_logs').insert({
@@ -594,7 +715,7 @@ function AddPatient() {
       setIsSubmitSuccessOpen(true)
     } catch (submitError) {
       const fallback = 'Unable to save patient record.'
-      window.alert(submitError?.message || fallback)
+      setValidationMessage(submitError?.message || fallback)
     } finally {
       setIsSubmitting(false)
     }
@@ -612,6 +733,7 @@ function AddPatient() {
     setMedicalDetails(INITIAL_MEDICAL_DETAILS)
     setDentalDetails(INITIAL_DENTAL_DETAILS)
     setCheckedConditions(INITIAL_CHECKBOX_CONDITIONS)
+    setInvalidPatientFields({})
     sessionStorage.removeItem(ADD_PATIENT_DRAFT_KEY)
   }
   const handleSuccessAcknowledge = () => {
@@ -647,11 +769,11 @@ function AddPatient() {
             <div className="form-grid">
               <label>
                 <span className="required-label">Last Name<span className="required-asterisk">*</span></span>
-                <input type="text" required value={patientInfo.lastName} onChange={(e) => setPatientInfo((p) => ({ ...p, lastName: toTitleCase(e.target.value) }))} />
+                <input className={invalidPatientFields.lastName ? 'input-error' : ''} type="text" required value={patientInfo.lastName} onChange={(e) => setPatientField('lastName', toTitleCase(e.target.value))} />
               </label>
               <label>
                 <span className="required-label">First Name<span className="required-asterisk">*</span></span>
-                <input type="text" required value={patientInfo.firstName} onChange={(e) => setPatientInfo((p) => ({ ...p, firstName: toTitleCase(e.target.value) }))} />
+                <input className={invalidPatientFields.firstName ? 'input-error' : ''} type="text" required value={patientInfo.firstName} onChange={(e) => setPatientField('firstName', toTitleCase(e.target.value))} />
               </label>
               <label>
                 Middle Name
@@ -665,13 +787,17 @@ function AddPatient() {
                 <span className="required-label">Birthdate<span className="required-asterisk">*</span></span>
                 <div className="birthdate-input-wrap">
                   <input
+                    className={invalidPatientFields.birthdate ? 'input-error' : ''}
                     type="text"
                     required
                     placeholder="dd/mm/yyyy"
                     maxLength={10}
                     style={{ color: birthdateInput ? '#111827' : '#9aa6af' }}
                     value={birthdateInput}
-                    onChange={(e) => setBirthdateInput(normalizeBirthdateTyping(e.target.value))}
+                    onChange={(e) => {
+                      clearPatientFieldError('birthdate')
+                      setBirthdateInput(normalizeBirthdateTyping(e.target.value))
+                    }}
                     onBlur={commitBirthdateFromInput}
                   />
                   <button type="button" className="birthdate-picker-btn" onClick={openBirthdatePicker} aria-label="Open birthdate picker">
@@ -685,7 +811,7 @@ function AddPatient() {
                     value={patientInfo.birthdate}
                     onChange={(e) => {
                       const iso = e.target.value
-                      setPatientInfo((p) => ({ ...p, birthdate: iso }))
+                      setPatientField('birthdate', iso)
                       setBirthdateInput(formatBirthdateDisplay(iso))
                     }}
                     tabIndex={-1}
@@ -696,9 +822,10 @@ function AddPatient() {
               <label>
                 <span className="required-label">Sex<span className="required-asterisk">*</span></span>
                 <select
+                  className={invalidPatientFields.sex ? 'input-error' : ''}
                   required
                   value={patientInfo.sex}
-                  onChange={(e) => setPatientInfo((p) => ({ ...p, sex: e.target.value }))}
+                  onChange={(e) => setPatientField('sex', e.target.value)}
                   style={{ color: patientInfo.sex ? '#111827' : '#9aa6af' }}
                 >
                   <option value="">Select sex</option>
@@ -707,7 +834,7 @@ function AddPatient() {
               </label>
               <label>
                 <span className="required-label">Age<span className="required-asterisk">*</span></span>
-                <input type="text" required value={patientInfo.age} readOnly />
+                <input className={invalidPatientFields.age ? 'input-error' : ''} type="text" required value={patientInfo.age} readOnly />
               </label>
               <label>
                 Nickname
@@ -720,9 +847,10 @@ function AddPatient() {
               <label>
                 <span className="required-label">Civil Status<span className="required-asterisk">*</span></span>
                 <select
+                  className={invalidPatientFields.civilStatus ? 'input-error' : ''}
                   required
                   value={patientInfo.civilStatus}
-                  onChange={(e) => setPatientInfo((p) => ({ ...p, civilStatus: e.target.value }))}
+                  onChange={(e) => setPatientField('civilStatus', e.target.value)}
                   style={{ color: patientInfo.civilStatus ? '#111827' : '#9aa6af' }}
                 >
                   <option value="">Select civil status</option>
@@ -731,11 +859,12 @@ function AddPatient() {
               </label>
               <label className="span-3">
                 <span className="required-label">Current Address<span className="required-asterisk">*</span></span>
-                <input type="text" required value={patientInfo.currentAddress} onChange={(e) => setPatientInfo((p) => ({ ...p, currentAddress: toTitleCase(e.target.value) }))} />
+                <input className={invalidPatientFields.currentAddress ? 'input-error' : ''} type="text" required value={patientInfo.currentAddress} onChange={(e) => setPatientField('currentAddress', toTitleCase(e.target.value))} />
               </label>
               <label>
                 <span className="required-label">Mobile Number<span className="required-asterisk">*</span></span>
                 <input
+                  className={invalidPatientFields.mobileNumber ? 'input-error' : ''}
                   type="text"
                   required
                   inputMode="numeric"
@@ -746,16 +875,16 @@ function AddPatient() {
                   onChange={(e) => {
                     const rawValue = e.target.value
                     if (/[^0-9]/.test(rawValue)) {
-                      window.alert('Only numeric digits are allowed for mobile number.')
+                      setValidationMessage('Only numeric digits are allowed for mobile number.')
                       return
                     }
-                    setPatientInfo((p) => ({ ...p, mobileNumber: rawValue.slice(0, 11) }))
+                    setPatientField('mobileNumber', rawValue.slice(0, 11))
                   }}
                 />
               </label>
               <label>
                 <span className="required-label">Occupation<span className="required-asterisk">*</span></span>
-                <input type="text" required value={patientInfo.occupation} onChange={(e) => setPatientInfo((p) => ({ ...p, occupation: toTitleCase(e.target.value) }))} />
+                <input className={invalidPatientFields.occupation ? 'input-error' : ''} type="text" required value={patientInfo.occupation} onChange={(e) => setPatientField('occupation', toTitleCase(e.target.value))} />
               </label>
               <label className="span-3">
                 Office Address
@@ -765,19 +894,36 @@ function AddPatient() {
 
             {isMinor ? (
               <div className="minor-block">
-                <p>FOR MINORS (Visible when age &lt; 18)</p>
+                <p>ADDITIONAL FIELD FOR MINORS</p>
                 <div className="form-grid">
                   <label className="span-2">
                     <span className="required-label">Parent/Guardian Name<span className="required-asterisk">*</span></span>
-                    <input type="text" required value={patientInfo.guardianName} onChange={(e) => setPatientInfo((p) => ({ ...p, guardianName: toTitleCase(e.target.value) }))} />
+                    <input className={invalidPatientFields.guardianName ? 'input-error' : ''} type="text" required value={patientInfo.guardianName} onChange={(e) => setPatientField('guardianName', toTitleCase(e.target.value))} />
                   </label>
                   <label className="span-2">
                     <span className="required-label">Mobile Number<span className="required-asterisk">*</span></span>
-                    <input type="text" required value={patientInfo.guardianMobileNumber} onChange={(e) => setPatientInfo((p) => ({ ...p, guardianMobileNumber: e.target.value }))} />
+                    <input
+                      className={invalidPatientFields.guardianMobileNumber ? 'input-error' : ''}
+                      type="text"
+                      required
+                      inputMode="numeric"
+                      placeholder="09XX XXX XXXX"
+                      maxLength={11}
+                      pattern="[0-9]{11}"
+                      value={patientInfo.guardianMobileNumber}
+                      onChange={(e) => {
+                        const rawValue = e.target.value
+                        if (/[^0-9]/.test(rawValue)) {
+                          setValidationMessage('Only numeric digits are allowed for mobile number.')
+                          return
+                        }
+                        setPatientField('guardianMobileNumber', rawValue.slice(0, 11))
+                      }}
+                    />
                   </label>
                   <label>
                     <span className="required-label">Occupation<span className="required-asterisk">*</span></span>
-                    <input type="text" required value={patientInfo.guardianOccupation} onChange={(e) => setPatientInfo((p) => ({ ...p, guardianOccupation: toTitleCase(e.target.value) }))} />
+                    <input className={invalidPatientFields.guardianOccupation ? 'input-error' : ''} type="text" required value={patientInfo.guardianOccupation} onChange={(e) => setPatientField('guardianOccupation', toTitleCase(e.target.value))} />
                   </label>
                   <label className="span-3">
                     Office Address
@@ -1006,6 +1152,23 @@ function AddPatient() {
               <p>Patient record submitted successfully.</p>
               <div className="add-submit-actions center">
                 <button type="button" className="success-btn" onClick={handleSuccessAcknowledge}>OK</button>
+              </div>
+            </div>
+          </div>
+        </>
+      ) : null}
+
+      {validationMessage ? (
+        <>
+          <div className="modal-backdrop" onClick={() => setValidationMessage('')} />
+          <div className="add-submit-modal">
+            <div className="add-submit-modal-head">
+              <h3>Notice</h3>
+            </div>
+            <div className="add-submit-modal-body">
+              <p>{validationMessage}</p>
+              <div className="add-submit-actions center">
+                <button type="button" className="success-btn" onClick={() => setValidationMessage('')}>OK</button>
               </div>
             </div>
           </div>

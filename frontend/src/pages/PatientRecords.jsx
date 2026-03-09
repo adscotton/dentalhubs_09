@@ -41,16 +41,25 @@ const calculateAge = (birthDate) => {
   return age < 0 ? '-' : age
 }
 
+const patientCodeNumber = (row) => {
+  const code = formatPatientCode(row.patient_code, row.id)
+  const digits = Number(code.replace(/\D/g, ''))
+  return Number.isFinite(digits) ? digits : 0
+}
+
 function PatientRecords() {
   const navigate = useNavigate()
   const [records, setRecords] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [searchTerm, setSearchTerm] = useState('')
-  const [sortBy, setSortBy] = useState('name')
+  const [sortBy, setSortBy] = useState('patientId')
   const [nameSortDirection, setNameSortDirection] = useState('asc')
   const [registeredSortDirection, setRegisteredSortDirection] = useState('asc')
+  const [patientIdSortDirection, setPatientIdSortDirection] = useState('desc')
   const [currentPage, setCurrentPage] = useState(1)
+  const [statusConfirmRow, setStatusConfirmRow] = useState(null)
+  const [isStatusUpdating, setIsStatusUpdating] = useState(false)
 
   const loadRecords = async () => {
     setLoading(true)
@@ -84,37 +93,10 @@ function PatientRecords() {
   const toggleRecord = async (row) => {
     const nextIsActive = !row.is_active
     setError('')
+    setIsStatusUpdating(true)
+    setStatusConfirmRow(null)
 
-    const { data: authData } = await supabase.auth.getUser()
-    const actorId = authData?.user?.id ?? null
-
-    const { error: updateError } = await supabase
-      .from('patients')
-      .update({
-        is_active: nextIsActive,
-        archived_at: null,
-        archived_by: null,
-        updated_by: actorId,
-      })
-      .eq('id', row.id)
-
-    if (updateError) {
-      setError(updateError.message)
-      return
-    }
-
-    const { error: logError } = await supabase
-      .from('patient_logs')
-      .insert({
-        patient_id: row.id,
-        action: nextIsActive ? 'retrieve' : 'archive',
-        details: nextIsActive ? 'Set patient active' : 'Set patient inactive',
-      })
-
-    if (logError) {
-      setError(logError.message)
-    }
-
+    // Optimistic update for snappier UI; rollback only if save fails.
     setRecords((prev) =>
       prev.map((item) => (
         item.id === row.id
@@ -126,6 +108,51 @@ function PatientRecords() {
           : item
       )),
     )
+
+    try {
+      const { data: authData } = await supabase.auth.getUser()
+      const actorId = authData?.user?.id ?? null
+
+      const { error: updateError } = await supabase
+        .from('patients')
+        .update({
+          is_active: nextIsActive,
+          archived_at: null,
+          archived_by: null,
+          updated_by: actorId,
+        })
+        .eq('id', row.id)
+
+      if (updateError) throw updateError
+
+      const { error: logError } = await supabase
+        .from('patient_logs')
+        .insert({
+          patient_id: row.id,
+          action: nextIsActive ? 'retrieve' : 'archive',
+          details: nextIsActive ? 'Set patient active' : 'Set patient inactive',
+        })
+
+      if (logError) {
+        setError(logError.message)
+      }
+    } catch (updateError) {
+      // Rollback optimistic state if the database update failed.
+      setRecords((prev) =>
+        prev.map((item) => (
+          item.id === row.id
+            ? {
+              ...item,
+              is_active: row.is_active,
+              archived_at: row.archived_at ?? null,
+            }
+            : item
+        )),
+      )
+      setError(updateError.message)
+    } finally {
+      setIsStatusUpdating(false)
+    }
   }
 
   const filteredRecords = useMemo(() => {
@@ -141,6 +168,11 @@ function PatientRecords() {
       ))
     }
 
+    if (sortBy === 'patientId') {
+      const multiplier = patientIdSortDirection === 'asc' ? 1 : -1
+      return source.sort((a, b) => (patientCodeNumber(a) - patientCodeNumber(b)) * multiplier)
+    }
+
     return source.sort((a, b) => {
       const aName = `${a.last_name}, ${a.first_name}`.toLowerCase()
       const bName = `${b.last_name}, ${b.first_name}`.toLowerCase()
@@ -148,7 +180,7 @@ function PatientRecords() {
         ? aName.localeCompare(bName)
         : bName.localeCompare(aName)
     })
-  }, [nameSortDirection, records, registeredSortDirection, searchTerm, sortBy])
+  }, [nameSortDirection, patientIdSortDirection, records, registeredSortDirection, searchTerm, sortBy])
 
   const totalPages = Math.max(1, Math.ceil(filteredRecords.length / PAGE_SIZE))
   const safePage = Math.min(currentPage, totalPages)
@@ -199,6 +231,7 @@ function PatientRecords() {
                 }}
               >
                 <option value="name">Name</option>
+                <option value="patientId">Patient ID</option>
                 <option value="registered">Date Registered</option>
               </select>
               <button
@@ -207,6 +240,8 @@ function PatientRecords() {
                 onClick={() => {
                   if (sortBy === 'registered') {
                     setRegisteredSortDirection((previous) => (previous === 'asc' ? 'desc' : 'asc'))
+                  } else if (sortBy === 'patientId') {
+                    setPatientIdSortDirection((previous) => (previous === 'asc' ? 'desc' : 'asc'))
                   } else {
                     setNameSortDirection((previous) => (previous === 'asc' ? 'desc' : 'asc'))
                   }
@@ -215,6 +250,8 @@ function PatientRecords() {
               >
                 {sortBy === 'registered'
                   ? (registeredSortDirection === 'asc' ? 'Ascending' : 'Descending')
+                  : sortBy === 'patientId'
+                    ? (patientIdSortDirection === 'asc' ? 'Ascending' : 'Descending')
                   : (nameSortDirection === 'asc' ? 'Ascending' : 'Descending')}
               </button>
             </div>
@@ -247,7 +284,10 @@ function PatientRecords() {
                     type="button"
                     className={`status ${row.is_active ? 'on' : 'off'}`}
                     aria-label={`Set ${row.last_name}, ${row.first_name} as ${row.is_active ? 'inactive' : 'active'}`}
-                    onClick={() => { void toggleRecord(row) }}
+                    onClick={() => {
+                      setError('')
+                      setStatusConfirmRow(row)
+                    }}
                   />
                 </span>
                 <span>
@@ -285,6 +325,24 @@ function PatientRecords() {
           </div>
         </div>
       </section>
+
+      {statusConfirmRow ? <div className="modal-backdrop" onClick={() => { if (!isStatusUpdating) setStatusConfirmRow(null) }} /> : null}
+      {statusConfirmRow ? (
+        <div className="pr-modal procedures-modal archive-modal status-confirm-modal">
+          <div className="pr-modal-head"><h2>Confirm Status</h2></div>
+          <div className="pr-modal-body">
+            <p>
+              Are you sure you want to {statusConfirmRow.is_active ? 'inactive' : 'active'} this user?
+            </p>
+            <div className="modal-actions">
+              <button type="button" className="danger-btn" disabled={isStatusUpdating} onClick={() => setStatusConfirmRow(null)}>No</button>
+              <button type="button" className="success-btn" disabled={isStatusUpdating} onClick={() => { void toggleRecord(statusConfirmRow) }}>
+                {isStatusUpdating ? 'Saving...' : 'Yes'}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </>
   )
 }

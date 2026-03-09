@@ -19,7 +19,7 @@ No patient account role is included.
 - `sql/00a_add_admin_role_enum.sql`
   - Upgrade helper for older DBs where `public.staff_role` exists without `admin`
 - `sql/01_dev_seed_staff_accounts.sql`
-  - Optional dev-only script to create sample users
+  - Optional dev-only script to create/reset sample users
 - `sql/02_smoke_test_flow.sql`
   - Optional verification queries for role/account/navigation flow
 - `sql/03_seed_app_data.sql`
@@ -41,6 +41,15 @@ No patient account role is included.
     - `storage_path`
     - `mime_type`
     - `file_size`
+- `sql/07_auth_account_recovery_hotfix.sql`
+  - Optional one-time auth/login recovery hotfix:
+    - rebuilds/normalizes `staff_profiles` from `auth.users`
+    - accepts username or email during login resolution
+    - backfills/normalizes `auth.identities` email identity rows
+- `sql/09_auth_pgcrypto_search_path_hotfix.sql`
+  - Optional one-time auth password-hash hotfix:
+    - fixes `gen_salt(unknown) does not exist`
+    - updates auth/admin function `search_path` to include `extensions`
 
 ## Run Order (Supabase SQL Editor)
 
@@ -49,9 +58,11 @@ No patient account role is included.
 3. If your DB already existed before these latest updates, run `backend/sql/04_profile_and_amount_hotfix.sql`
 4. If your DB already existed before service price/discount support, run `backend/sql/05_service_pricing_and_discount_hotfix.sql`
 5. If your DB already existed before patient document metadata support, run `backend/sql/06_patient_documents_columns_hotfix.sql`
-6. Optional (dev only): run `backend/sql/01_dev_seed_staff_accounts.sql`
-7. Optional: run `backend/sql/03_seed_app_data.sql` for baseline app data
-8. Optional: run `backend/sql/02_smoke_test_flow.sql` to verify role flow
+6. If your logins/accounts are broken or inconsistent, run `backend/sql/07_auth_account_recovery_hotfix.sql`
+7. If creating/resetting users throws `gen_salt(unknown) does not exist`, run `backend/sql/09_auth_pgcrypto_search_path_hotfix.sql`
+8. Optional (dev only): run `backend/sql/01_dev_seed_staff_accounts.sql`
+9. Optional: run `backend/sql/03_seed_app_data.sql` for baseline app data
+10. Optional: run `backend/sql/02_smoke_test_flow.sql` to verify role flow
 
 ## Auth Signup Rule
 
@@ -105,7 +116,7 @@ For `admin`, `/admin` is returned.
 
 ## Dev Test Accounts
 
-If you run `01_dev_seed_staff_accounts.sql`, it creates:
+If you run `01_dev_seed_staff_accounts.sql`, it creates or resets:
 
 - `admin` (email: `admin@dent22.local`) / `Admin123!`
 - `receptionist` (email: `receptionist@dent22.local`) / `Reception123!`

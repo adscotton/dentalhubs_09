@@ -547,6 +547,7 @@ as $$
   join public.patients p on p.id = pl.patient_id
   left join public.staff_profiles sp on sp.user_id = pl.created_by
   where public.is_active_staff()
+    and pl.action = 'service_update'::public.patient_log_action
   order by pl.created_at desc;
 $$;
 
@@ -560,7 +561,7 @@ create or replace function public.admin_create_user(
 returns uuid
 language plpgsql
 security definer
-set search_path = public, auth
+set search_path = public, auth, extensions
 as $$
 declare
   v_instance_id uuid := '00000000-0000-0000-0000-000000000000';
@@ -720,7 +721,7 @@ create or replace function public.admin_reset_user_password(
 returns void
 language plpgsql
 security definer
-set search_path = public, auth
+set search_path = public, auth, extensions
 as $$
 begin
   if not public.has_staff_role('admin'::public.staff_role) then
@@ -750,7 +751,7 @@ create or replace function public.handle_new_auth_user()
 returns trigger
 language plpgsql
 security definer
-set search_path = public, auth
+set search_path = public, auth, extensions
 as $$
 declare
   requested_role text;

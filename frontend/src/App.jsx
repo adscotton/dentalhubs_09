@@ -10,11 +10,26 @@ import AddPatient from './pages/AddPatient'
 import Procedures from './pages/Procedures'
 import PatientLogs from './pages/PatientLogs'
 import Admin from './pages/Admin'
+import ResetPassword from './pages/ResetPassword'
 import { isAccessTokenExpired, missingSupabaseEnv, supabase } from './lib/supabaseClient'
 
 const ADD_PATIENT_DRAFT_KEY = 'dent22.addPatientDraft.v1'
 
-function LoginRoute({ onLogin, form, error, showPassword, onChange, onTogglePassword }) {
+function LoginRoute({
+  onLogin,
+  form,
+  error,
+  showPassword,
+  onChange,
+  onTogglePassword,
+  forgotUsername,
+  forgotError,
+  forgotSuccess,
+  isSendingReset,
+  onForgotUsernameChange,
+  onForgotSubmit,
+  onForgotClose,
+}) {
   return (
     <Login
       form={form}
@@ -23,6 +38,13 @@ function LoginRoute({ onLogin, form, error, showPassword, onChange, onTogglePass
       onChange={onChange}
       onSubmit={onLogin}
       onTogglePassword={onTogglePassword}
+      forgotUsername={forgotUsername}
+      forgotError={forgotError}
+      forgotSuccess={forgotSuccess}
+      isSendingReset={isSendingReset}
+      onForgotUsernameChange={onForgotUsernameChange}
+      onForgotSubmit={onForgotSubmit}
+      onForgotClose={onForgotClose}
     />
   )
 }
@@ -55,6 +77,10 @@ function AppRoutes() {
   const [error, setError] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const [form, setForm] = useState({ username: '', password: '' })
+  const [forgotUsername, setForgotUsername] = useState('')
+  const [forgotError, setForgotError] = useState('')
+  const [forgotSuccess, setForgotSuccess] = useState('')
+  const [isSendingReset, setIsSendingReset] = useState(false)
   const profileUserIdRef = useRef(null)
   const location = useLocation()
   const navigate = useNavigate()
@@ -108,6 +134,10 @@ function AppRoutes() {
       setNavItems([])
       setForm({ username: '', password: '' })
       setShowPassword(false)
+      setForgotUsername('')
+      setForgotError('')
+      setForgotSuccess('')
+      setIsSendingReset(false)
       sessionStorage.removeItem(ADD_PATIENT_DRAFT_KEY)
     }
 
@@ -228,21 +258,85 @@ function AppRoutes() {
     setError('')
   }
 
+  const handleForgotUsernameChange = (event) => {
+    setForgotUsername(event.target.value)
+    setForgotError('')
+    setForgotSuccess('')
+  }
+
+  const handleForgotClose = () => {
+    setForgotUsername('')
+    setForgotError('')
+    setForgotSuccess('')
+    setIsSendingReset(false)
+  }
+
+  const handleForgotSubmit = async (event) => {
+    event.preventDefault()
+    if (!supabase) return
+
+    const username = forgotUsername.trim()
+    if (!username) {
+      setForgotError('Please enter your username.')
+      setForgotSuccess('')
+      return
+    }
+
+    setIsSendingReset(true)
+    setForgotError('')
+    setForgotSuccess('')
+
+    const { data: resolvedEmail, error: resolveError } = await supabase.rpc('resolve_login_email', {
+      p_username: username,
+    })
+
+    if (resolveError) {
+      setForgotError('Unable to process password reset right now.')
+      setIsSendingReset(false)
+      return
+    }
+
+    if (!resolvedEmail) {
+      setForgotError('Username was not found.')
+      setIsSendingReset(false)
+      return
+    }
+
+    const redirectTo = `${window.location.origin}/reset-password`
+    const { error: resetError } = await supabase.auth.resetPasswordForEmail(resolvedEmail, { redirectTo })
+    if (resetError) {
+      setForgotError('Unable to send reset email. Please try again.')
+      setIsSendingReset(false)
+      return
+    }
+
+    setForgotSuccess('Password reset email sent. Please check your inbox.')
+    setIsSendingReset(false)
+  }
+
   const handleSubmit = async (event) => {
     event.preventDefault()
     if (!supabase) return
 
-    const username = form.username.trim()
-    if (!username || !form.password) {
+    const loginInput = form.username.trim()
+    if (!loginInput || !form.password) {
       setError('Please enter username and password.')
       return
     }
 
-    const { data: emailForLogin, error: resolveError } = await supabase.rpc('resolve_login_email', {
-      p_username: username,
+    const { data: resolvedEmail, error: resolveError } = await supabase.rpc('resolve_login_email', {
+      p_username: loginInput,
     })
 
-    if (resolveError || !emailForLogin) {
+    const fallbackEmail = loginInput.includes('@') ? loginInput : ''
+    const emailForLogin = resolvedEmail || fallbackEmail
+
+    if (resolveError && !emailForLogin) {
+      setError('Unable to resolve login account.')
+      return
+    }
+
+    if (!emailForLogin) {
       setError('Incorrect username or password.')
       return
     }
@@ -294,8 +388,9 @@ function AppRoutes() {
   }
 
   const isAuthed = Boolean(session && profile?.is_active)
+  const isResetPasswordRoute = location.pathname === '/reset-password'
 
-  if (!isAuthed && location.pathname !== '/login') {
+  if (!isAuthed && location.pathname !== '/login' && !isResetPasswordRoute) {
     return <Navigate to="/login" replace />
   }
 
@@ -315,9 +410,17 @@ function AppRoutes() {
             showPassword={showPassword}
             onChange={handleChange}
             onTogglePassword={() => setShowPassword((prev) => !prev)}
+            forgotUsername={forgotUsername}
+            forgotError={forgotError}
+            forgotSuccess={forgotSuccess}
+            isSendingReset={isSendingReset}
+            onForgotUsernameChange={handleForgotUsernameChange}
+            onForgotSubmit={handleForgotSubmit}
+            onForgotClose={handleForgotClose}
           />
         }
       />
+      <Route path="/reset-password" element={<ResetPassword />} />
       <Route path="/*" element={<ProtectedLayout onLogout={handleLogout} navItems={navItems} role={profile?.role} profile={profile} />} />
     </Routes>
   )

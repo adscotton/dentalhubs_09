@@ -232,6 +232,22 @@ function Admin() {
   const saveUserEdit = async () => {
     if (!selected) return
 
+    try {
+      const canProceed = await ensureNotLastActiveAdmin({
+        targetUserId: selected.user_id,
+        nextRole: userForm.role,
+        nextIsActive: userForm.is_active,
+      })
+
+      if (!canProceed) {
+        setError('Cannot deactivate/archive the last active admin account. Add or keep another active admin first.')
+        return
+      }
+    } catch (guardError) {
+      setError(guardError.message)
+      return
+    }
+
     const { error: updateError } = await supabase.rpc('admin_update_user_profile', {
       p_user_id: selected.user_id,
       p_full_name: toTitleCase(userForm.full_name.trim()),
@@ -266,6 +282,24 @@ function Admin() {
     if (!selected) return
 
     if (selected.kind === 'user') {
+      try {
+        const canProceed = await ensureNotLastActiveAdmin({
+          targetUserId: selected.user_id,
+          nextRole: selected.role,
+          nextIsActive: false,
+        })
+
+        if (!canProceed) {
+          setError('Cannot archive the last active admin account. Add or keep another active admin first.')
+          closeModal()
+          return
+        }
+      } catch (guardError) {
+        setError(guardError.message)
+        closeModal()
+        return
+      }
+
       const { error: archiveError } = await supabase.rpc('admin_update_user_profile', {
         p_user_id: selected.user_id,
         p_full_name: selected.full_name,
@@ -373,6 +407,34 @@ function Admin() {
     if (archiveType === 'services') return archiveServices
     return archiveDentalConditions
   }, [archiveType, archivePatients, archiveUsers, archiveServices, archiveDentalConditions])
+  const activeAdminCount = useMemo(
+    () => users.filter((user) => user.is_active && user.role === 'admin').length,
+    [users],
+  )
+
+  const ensureNotLastActiveAdmin = async ({ targetUserId, nextRole, nextIsActive }) => {
+    const { data: targetUser, error: targetError } = await supabase
+      .from('staff_profiles')
+      .select('user_id, role, is_active')
+      .eq('user_id', targetUserId)
+      .maybeSingle()
+
+    if (targetError) throw targetError
+    if (!targetUser) return true
+
+    const isCurrentlyActiveAdmin = targetUser.is_active && targetUser.role === 'admin'
+    const willRemainActiveAdmin = nextIsActive && nextRole === 'admin'
+    if (!isCurrentlyActiveAdmin || willRemainActiveAdmin) return true
+
+    const { count, error: countError } = await supabase
+      .from('staff_profiles')
+      .select('user_id', { count: 'exact', head: true })
+      .eq('is_active', true)
+      .eq('role', 'admin')
+
+    if (countError) throw countError
+    return (count ?? 0) > 1
+  }
 
   const paginateRows = (rows, page) => {
     const totalPages = Math.max(1, Math.ceil(rows.length / PAGE_SIZE))
@@ -448,7 +510,15 @@ function Admin() {
                     <span className="row-actions">
                       <button type="button" className="icon-btn" onClick={() => openEditUser(row)}>&#9998;</button>
                       {row.is_active ? (
-                        <button type="button" className="icon-btn danger" onClick={() => openConfirmArchive({ ...row, kind: 'user' })}>&#8681;</button>
+                        <button
+                          type="button"
+                          className="icon-btn danger"
+                          onClick={() => openConfirmArchive({ ...row, kind: 'user' })}
+                          disabled={row.role === 'admin' && activeAdminCount <= 1}
+                          title={row.role === 'admin' && activeAdminCount <= 1 ? 'At least one active admin must remain.' : 'Archive user'}
+                        >
+                          &#8681;
+                        </button>
                       ) : null}
                     </span>
                   </div>

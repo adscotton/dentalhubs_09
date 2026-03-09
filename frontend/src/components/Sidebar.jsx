@@ -23,6 +23,7 @@ const NAV_ICONS = {
 function Sidebar({ onLogout, navItems }) {
   const location = useLocation()
   const navigate = useNavigate()
+  const [showGuardPassword, setShowGuardPassword] = useState(false)
   const [guardState, setGuardState] = useState({
     isOpen: false,
     nextPath: '',
@@ -56,6 +57,7 @@ function Sidebar({ onLogout, navItems }) {
     if (!isLeavingAddPatient) return
 
     event.preventDefault()
+    setShowGuardPassword(false)
     setGuardState({
       isOpen: true,
       nextPath: destinationPath,
@@ -66,6 +68,7 @@ function Sidebar({ onLogout, navItems }) {
   }
 
   const closeGuardModal = () => {
+    setShowGuardPassword(false)
     setGuardState({
       isOpen: false,
       nextPath: '',
@@ -157,17 +160,55 @@ function Sidebar({ onLogout, navItems }) {
                 Add Patient is open for customer input only. Enter your password to switch tabs.
               </p>
               <label htmlFor="nav-password-input">Password</label>
-              <input
-                id="nav-password-input"
-                type="password"
-                value={guardState.password}
-                onChange={(event) => setGuardState((previous) => ({ ...previous, password: event.target.value, error: '' }))}
-                onKeyDown={(event) => {
-                  if (event.key === 'Enter') void continueNavigation()
-                }}
-                disabled={guardState.isChecking}
-                autoFocus
-              />
+              <div className="nav-password-field">
+                <input
+                  id="nav-password-input"
+                  type={showGuardPassword ? 'text' : 'password'}
+                  value={guardState.password}
+                  onChange={(event) => setGuardState((previous) => ({ ...previous, password: event.target.value, error: '' }))}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter') void continueNavigation()
+                  }}
+                  disabled={guardState.isChecking}
+                  autoFocus
+                />
+                <button
+                  type="button"
+                  className="nav-password-toggle"
+                  onClick={() => setShowGuardPassword((previous) => !previous)}
+                  aria-label={showGuardPassword ? 'Hide password' : 'Show password'}
+                  title={showGuardPassword ? 'Hide password' : 'Show password'}
+                  disabled={guardState.isChecking}
+                >
+                  <svg className="eye-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" aria-hidden>
+                    <path
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.6"
+                      d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6S2.5 12 2.5 12Z"
+                    />
+                    <circle
+                      cx="12"
+                      cy="12"
+                      r="3"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.6"
+                    />
+                    {!showGuardPassword ? (
+                      <line
+                        x1="4"
+                        y1="4"
+                        x2="20"
+                        y2="20"
+                        stroke="currentColor"
+                        strokeWidth="1.6"
+                        strokeLinecap="round"
+                      />
+                    ) : null}
+                  </svg>
+                </button>
+              </div>
               {guardState.error ? <p className="nav-password-error">{guardState.error}</p> : null}
               <div className="nav-password-actions">
                 <button type="button" className="danger-btn" onClick={closeGuardModal} disabled={guardState.isChecking}>Cancel</button>

@@ -283,9 +283,9 @@
 }
 
 .sidebar-logo {
-  width: 190px;
+  width: 240px;
   height: auto;
-  max-height: 190px;
+  max-height: 240px;
   margin: 0 auto;
   display: block;
   object-fit: contain;
@@ -626,7 +626,7 @@
 
 .logs-table .table-head,
 .logs-table .table-row {
-  grid-template-columns: 132px 1.25fr 1.15fr 1fr;
+  grid-template-columns: 132px 1.35fr 1.2fr 1fr;
 }
 
 .users-table .table-head,
@@ -853,12 +853,12 @@
 }
 
 .panel.tabs-panel.admin-panel {
-  margin-top: -130px;
-  gap: 4px;
+  margin-top: 0;
+  gap: 10px;
 }
 
 .panel.tabs-panel.admin-panel .records {
-  margin-top: -30px;
+  margin-top: 0;
 }
 
 .home-page .panel {
@@ -899,9 +899,9 @@
 .panel-tabs.add-patient-tabs.admin-tabs {
   margin-top: 6px;
   margin-bottom: 0;
-  position: sticky;
-  top: 8px;
-  z-index: 25;
+  position: relative;
+  top: 0;
+  z-index: auto;
 }
 
 .panel-tabs.add-patient-tabs .tab {
@@ -1030,6 +1030,14 @@
   border: 1px solid #bcc7cf;
   padding: 8px 10px;
   border-radius: 6px;
+}
+
+.form-grid input.input-error,
+.form-grid select.input-error,
+.history-top-grid input.input-error,
+.history-top-grid select.input-error {
+  border-color: #d62828;
+  box-shadow: 0 0 0 1px rgba(214, 40, 40, 0.18);
 }
 
 .form-grid .span-2 {
@@ -1657,6 +1665,43 @@
   font-size: 16px;
 }
 
+.nav-password-field {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  border: 1px solid #b6c4cd;
+  background: #fff;
+  border-radius: 2px;
+  padding-right: 6px;
+}
+
+.nav-password-field input {
+  border: none;
+  padding: 8px 10px;
+  background: transparent;
+}
+
+.nav-password-field input:focus {
+  outline: none;
+}
+
+.nav-password-toggle {
+  border: none;
+  background: transparent;
+  color: #6f7f89;
+  width: 32px;
+  height: 32px;
+  padding: 4px;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+
+.nav-password-toggle:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
 .nav-password-error {
   margin: 0;
   color: #c42323;
@@ -2193,6 +2238,11 @@
   .table-row {
     grid-template-columns: 80px 1.2fr 70px 70px 140px 80px 90px;
   }
+  
+  .logs-table .table-head,
+  .logs-table .table-row {
+    grid-template-columns: 90px 1.2fr 1.1fr 1fr;
+  }
 
   .grid-two {
     grid-template-columns: 1fr;
@@ -2724,12 +2774,21 @@
 
 .mini-check-grid label,
 .pr-option-grid label {
-  display: inline-flex;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
   align-items: flex-start;
-  gap: 12px;
+  gap: 0 12px;
+  min-width: 0;
   font-size: 16px;
   line-height: 1.35;
   color: #4e606d;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.mini-check-grid label input[type='checkbox'],
+.pr-option-grid label input[type='checkbox'] {
+  margin-top: 3px;
 }
 
 .pr-split-header {
@@ -3147,7 +3206,7 @@
 }
 
 .service-ledger-table {
-  width: min(600px, 100%);
+  width: min(680px, 100%);
   margin: 0 auto;
   border: 1px solid #c8d3da;
   background: #f7fafb;
@@ -3156,16 +3215,27 @@
 .service-ledger-head,
 .service-ledger-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 130px 170px;
+  grid-template-columns: minmax(0, 1fr) 110px 190px 96px;
   align-items: center;
   gap: 0;
 }
 
-.service-ledger-head span:nth-child(2),
+.service-ledger-head span {
+  white-space: nowrap;
+}
+
+.service-ledger-head span:nth-child(2) {
+  text-align: center;
+}
+
 .service-ledger-head span:nth-child(3),
-.service-ledger-row span:nth-child(2),
 .service-ledger-row span:nth-child(3) {
   text-align: right;
+}
+
+.service-ledger-head span:nth-child(4),
+.service-ledger-row span:nth-child(4) {
+  text-align: center;
 }
 
 .service-ledger-error {
@@ -3178,8 +3248,8 @@
   background: #f1f1f1;
   color: #4d5459;
   font-weight: 700;
-  font-size: 22px;
-  padding: 10px 14px;
+  font-size: 16px;
+  padding: 10px 12px;
 }
 
 .service-ledger-rows {
@@ -3193,7 +3263,6 @@
 
 .service-ledger-service-cell {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
 }
 
@@ -3228,7 +3297,21 @@
   color: #fff;
   font-size: 14px;
   cursor: pointer;
-  margin-right: 10px;
+  margin-right: 0;
+}
+
+.service-ledger-remove-cell {
+  border-left: 1px solid #d4dde3;
+  display: grid;
+  place-items: center;
+  min-height: 56px;
+  padding: 0 8px;
+}
+
+.service-ledger-remove-placeholder {
+  color: #95a3ad;
+  font-size: 16px;
+  line-height: 1;
 }
 
 .service-ledger-amount {
@@ -3976,7 +4059,7 @@
 .procedures-list-card h2,
 .procedures-form-card h2 {
   margin: 0 0 6px;
-  font-size: 52px;
+  font-size: 40px;
 }
 
 .procedures-panel .simple-head {
@@ -4016,6 +4099,41 @@
   background: #6b6b6b;
 }
 
+.archive-modal {
+  background: #6b6b6b;
+}
+
+.procedures-error-modal {
+  background: #b3261e;
+}
+
+.procedures-error-modal .pr-modal-head {
+  background: #b3261e;
+  justify-content: center;
+}
+
+.procedures-error-modal .pr-modal-head h2 {
+  text-align: center;
+}
+
+.procedures-error-modal .pr-modal-body {
+  text-align: center;
+}
+
+.procedures-error-modal .pr-modal-body p {
+  font-size: clamp(24px, 2.8vw, 44px);
+  margin: 24px 0 18px;
+  font-weight: 600;
+}
+
+.status-confirm-modal {
+  background: #6f6f6f;
+}
+
+.status-confirm-modal .pr-modal-head {
+  justify-content: center;
+}
+
 .archive-modal .pr-modal-body p {
   font-size: 49px;
   text-align: center;
@@ -4023,6 +4141,10 @@
 }
 
 .success-modal .pr-modal-head {
+  background: #237f42;
+}
+
+.success-modal {
   background: #237f42;
 }
 
@@ -4044,7 +4166,7 @@
 }
 
 .admin-panel.v2 .records {
-  margin-top: -8px;
+  margin-top: 0;
 }
 
 .admin-panel.v2 .records-actions .sorter select {
@@ -4079,7 +4201,7 @@
   }
 
   .service-ledger-head {
-    font-size: 22px;
+    font-size: 16px;
   }
 
   .service-ledger-row select,
@@ -4116,7 +4238,7 @@
 
   .service-ledger-head,
   .service-ledger-row {
-    grid-template-columns: minmax(0, 1fr) 110px 150px;
+    grid-template-columns: minmax(0, 1fr) 84px 120px 56px;
   }
 
   .service-ledger-discount-wrap,

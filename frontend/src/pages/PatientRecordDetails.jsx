@@ -114,10 +114,6 @@ const syncToothMapWithLegendCodes = (toothMap, legendCodes, defaultCode) => {
       return
     }
 
-    if (!legendCodes.includes(code)) {
-      nextMap[position] = defaultCode
-      changed = true
-    }
   })
 
   return changed ? nextMap : toothMap
@@ -505,8 +501,12 @@ function PatientRecordDetails({ currentRole, currentProfile }) {
   }, [legendOptions])
   const legendCodes = useMemo(() => {
     const liveCodes = legendOptions.map((legend) => legend.code).filter(Boolean)
-    return [...new Set([defaultLegendCode, ...liveCodes].filter(Boolean))]
-  }, [defaultLegendCode, legendOptions])
+    const persistedCodes = [
+      ...Object.values(dentalRecord?.toothMap ?? {}),
+      ...Object.values(dentalRecordForm?.toothMap ?? {}),
+    ].filter(Boolean)
+    return [...new Set([defaultLegendCode, ...liveCodes, ...persistedCodes].filter(Boolean))]
+  }, [defaultLegendCode, dentalRecord, dentalRecordForm, legendOptions])
 
   const takeSnapshot = useCallback(() => {
     setPatientSnapshot({
@@ -863,17 +863,25 @@ function PatientRecordDetails({ currentRole, currentProfile }) {
     setLoading(true)
     setError('')
     try {
+      // Load essentials first so the page can render faster after clicking View.
       await Promise.all([
         loadPatient(),
-        loadServiceOptions(),
-        loadLegendOptions(),
         loadServiceRows(),
         loadDentalRecord(),
-        loadPatientDocuments(),
       ])
+
+      setLoading(false)
+
+      // Load secondary data in the background (no blocking spinner).
+      void Promise.all([
+        loadServiceOptions(),
+        loadLegendOptions(),
+        loadPatientDocuments(),
+      ]).catch((fetchError) => {
+        setError(normalizeError(fetchError, 'Some supporting data failed to load.'))
+      })
     } catch (fetchError) {
       setError(normalizeError(fetchError, 'Unable to load patient data.'))
-    } finally {
       setLoading(false)
     }
   }, [loadDentalRecord, loadLegendOptions, loadPatient, loadPatientDocuments, loadServiceOptions, loadServiceRows])
@@ -1002,7 +1010,7 @@ function PatientRecordDetails({ currentRole, currentProfile }) {
         lines: row.lines.map((line) => ({
           serviceId: line.serviceId,
           quantity: line.quantity ?? 1,
-          unitPrice: line.unitPrice ?? '',
+          unitPrice: serviceOptions.find((service) => service.id === line.serviceId)?.price ?? line.unitPrice ?? '',
         })),
         discountType: resolvedDiscountType,
         discountValue: totalDiscount,
@@ -2184,7 +2192,7 @@ function PatientRecordDetails({ currentRole, currentProfile }) {
       {modal === 'service-edit' ? (
         <div className="pr-modal service-ledger-modal">
           <div className="pr-modal-head"><h2>{serviceForm.originalDate ? 'Edit' : 'Add'} Service Record</h2><button type="button" onClick={close}>X</button></div>
-          <div className="pr-modal-body">
+          <div className="pr-modal-body pr-modal-scroll">
             <div className="service-ledger-date">
               <span className="service-ledger-date-label">Date</span>
               <label className="service-ledger-date-field">
@@ -2199,14 +2207,9 @@ function PatientRecordDetails({ currentRole, currentProfile }) {
               </label>
             </div>
             <div className="service-ledger-table">
-              <div className="service-ledger-head"><span>Services</span><span>Quantity</span><span>Amount (PHP)</span></div>
+              <div className="service-ledger-head"><span>Services</span><span>Quantity</span><span>Amount (PHP)</span><span>Remove</span></div>
               <div className="service-ledger-rows">
                 {serviceForm.lines.map((line, index) => {
-                  const quantityValue = toServiceQuantity(line.quantity)
-                  const unitPriceValue = toMoney(line.unitPrice)
-                  const lineAmount = quantityValue !== null && unitPriceValue !== null
-                    ? roundMoney(quantityValue * unitPriceValue)
-                    : null
                   return (
                     <div key={`service-line-${index}`} className="service-ledger-row">
                       <div className="service-ledger-service-cell">
@@ -2214,11 +2217,6 @@ function PatientRecordDetails({ currentRole, currentProfile }) {
                           <option value="">Select service</option>
                           {serviceOptions.map((service) => <option key={service.id} value={service.id}>{service.service_name}</option>)}
                         </select>
-                        {serviceForm.lines.length > 1 ? (
-                          <button type="button" className="service-ledger-remove-line" onClick={() => removeServiceLine(index)} title="Remove service">
-                            &#10005;
-                          </button>
-                        ) : null}
                       </div>
                       <div className="service-ledger-qty">
                         <button type="button" className="service-ledger-qty-btn" onClick={() => updateServiceLine(index, { quantity: Math.max(1, Number(line.quantity || 1) - 1) })} disabled={!line.serviceId || Number(line.quantity || 1) <= 1}>-</button>
@@ -2236,8 +2234,12 @@ function PatientRecordDetails({ currentRole, currentProfile }) {
                       <label className="service-ledger-amount">
                         <span>&#8369;</span>
                         <input type="number" inputMode="decimal" value={line.unitPrice} min="0" step="0.01" onChange={(event) => updateServiceLine(index, { unitPrice: event.target.value })} />
-                        <strong>{lineAmount === null ? '-' : `\u20B1 ${formatCurrency(lineAmount)}`}</strong>
                       </label>
+                      <div className="service-ledger-remove-cell">
+                        <button type="button" className="service-ledger-remove-line" onClick={() => removeServiceLine(index)} title="Remove service">
+                          &#10005;
+                        </button>
+                      </div>
                     </div>
                   )
                 })}
@@ -2263,13 +2265,6 @@ function PatientRecordDetails({ currentRole, currentProfile }) {
                       onChange={(event) => updateServiceForm({ discountValue: event.target.value })}
                     />
                   </label>
-                  <span className="service-ledger-discount-preview">
-                    {serviceAmounts.discountAmount === null
-                      ? '-'
-                      : serviceForm.discountType === 'percent'
-                        ? `-\u20B1${formatCurrency(serviceAmounts.discountAmount)} (${serviceForm.discountValue || 0}%)`
-                        : `-\u20B1${formatCurrency(serviceAmounts.discountAmount)}`}
-                  </span>
                 </div>
               </div>
               <div className="service-ledger-total"><strong>Total</strong><strong>{serviceAmounts.totalAmount === null ? '-' : `\u20B1 ${formatCurrency(serviceAmounts.totalAmount)}`}</strong></div>

@@ -64,7 +64,9 @@ function PatientLogs() {
     const query = searchTerm.trim().toLowerCase()
     const hasDateFilter = Boolean(dateFilter)
 
-    const rows = (logs ?? []).filter((row) => {
+    const attendanceRows = (logs ?? []).filter((row) => `${row.action ?? ''}`.trim().toLowerCase() === 'service_update')
+
+    const rows = attendanceRows.filter((row) => {
       if (query && !`${row.patient_name}`.toLowerCase().includes(query)) return false
       if (!hasDateFilter) return true
 
@@ -84,7 +86,7 @@ function PatientLogs() {
   return (
     <>
       <header className="page-header">
-        <h1>Audit Logs</h1>
+        <h1>Patient Logs</h1>
       </header>
 
       <section className="records">
